@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cofre a Dois</title>
+<meta name="description" content="As finanças do casal: despesas partilhadas, gastos fixos, ganhos e objetivos.">
+<meta name="theme-color" content="#2a78d6">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Cofre a Dois">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="gated">
+<div id="gate"></div>
+<div class="app">
+  <header class="top">
+    <div class="brand">Cofre a Dois</div>
+    <button class="who" id="who" title="A tua conta"></button>
+    <button class="gear" id="themeBtn" aria-label="Mudar tema"></button>
+    <a class="gear" href="#definicoes" aria-label="Definições">⚙️</a>
+  </header>
+  <div class="space" id="space"><button data-sp="casal">👥 Casal</button><button data-sp="pessoal">🔒 Pessoal</button></div>
+  <main id="view"></main>
+</div>
+<button class="fab" id="fab" aria-label="Adicionar"><span class="fp">+</span><span class="fl" id="fabL">Nova despesa</span></button>
+<nav class="tabs"><div class="side-brand">💰 Cofre a Dois</div><div class="in" id="tabs"></div></nav>
+<div class="overlay" id="ov"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div class="pv" id="pv"><img id="pvImg" alt="Foto"><button id="pvClose" aria-label="Fechar">✕</button><button id="pvPrev" aria-label="Anterior">‹</button><button id="pvNext" aria-label="Seguinte">›</button><div id="pvN"></div></div>
+<div class="tip" id="tip"></div>
+<div class="toast" id="toast"></div>
+<script src="/js/vendor/supabase-2.119.2.js"></script>
+<script src="/js/config.js"></script>
+<script src="/js/app.js"></script>
+<script src="/js/cloud.js"></script>
+</body>
+</html>
