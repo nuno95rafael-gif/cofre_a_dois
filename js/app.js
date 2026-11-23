@@ -133,10 +133,21 @@ function vInicio(){
     const b=balanceViewer();const o=nm(other(S.viewer));
     const big=b>0.004?`${esc(o)} deve-te ${eur(b)}`:b<-0.004?`Deves ${eur(-b)} a ${esc(o)}`:'Estão quites 🎉';
     const hist=[...S.settlements].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3);
+    // previsão: o saldo quando as contas partilhadas por pagar até ao fim do mês forem pagas por quem as vai pagar
+    const endM=mk+'-31';
+    const pend=S.expenses.filter(e=>e.scope==='partilhada'&&e.status!=='pago'&&e.date<=endM);
+    let proj='';
+    if(pend.length){
+      let d=0;for(const e of pend){const sh=shares(e);d+=e.payer==='u1'?sh.u2:-sh.u1}
+      const pb=r2(b+(S.viewer==='u1'?d:-d));
+      const tot=pend.reduce((a,e)=>a+e.amount,0);
+      const txt=pb>0.004?`${esc(o)} vai dever-te ${eur(pb)}`:pb<-0.004?`vais dever ${eur(-pb)} a ${esc(o)}`:'continuam quites';
+      proj=`<div class="preview" style="margin:-4px 0 12px">⏳ Há ${pend.length} ${pend.length===1?'conta partilhada':'contas partilhadas'} por pagar este mês (${eur(tot)}). Quando ${pend.length===1?'estiver paga':'estiverem pagas'}, ${txt}.</div>`;
+    }
     return `${note}<div class="cols"><div>
     <div class="card balance">
-      <div class="lbl">Saldo entre os dois</div>
-      <div class="big">${big}</div>
+      <div class="lbl">Saldo entre os dois <span class="muted">(só contas já pagas)</span></div>
+      <div class="big">${big}</div>${proj}
       <button class="btn primary" id="settle" ${Math.abs(b)<0.005?'disabled style="opacity:.5"':''}>Acertar contas</button>
       ${hist.length?`<div class="hist"><div class="muted" style="font-size:12px">Últimos acertos</div>${hist.map(t=>`<div><span>${fShort(t.date)} · ${esc(you(t.from))} → ${esc(you(t.to))}${t.note?' · '+esc(t.note):''}</span><b>${eur(t.amount)}</b></div>`).join('')}</div>`:''}
     </div>
