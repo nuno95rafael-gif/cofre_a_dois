@@ -55,7 +55,7 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 
 create or replace function public.touch_record()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql set search_path = public as $$
 begin
   new.updated_at := now();
   new.updated_by := auth.uid();

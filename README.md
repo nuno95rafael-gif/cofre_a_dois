@@ -27,7 +27,7 @@ App web (PWA) para as finanças de um casal:
 
 ## Configuração
 
-1. Aplicar `supabase/migrations/0001_init.sql` no projeto Supabase.
+1. Aplicar por ordem as migrações em `supabase/migrations/` no projeto Supabase.
 2. Em *Authentication → Sign In / Providers → Email*, desativar **Confirm email**
    (o servidor de email incluído no Supabase só envia emails para membros da organização),
    ou configurar um SMTP próprio.

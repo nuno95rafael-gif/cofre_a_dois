@@ -1,6 +1,6 @@
-// Ligação ao Supabase. Estes dois valores são PÚBLICOS por natureza (vão para o browser);
-// a segurança dos dados é garantida pelas políticas RLS da base de dados.
+// Ligação ao Supabase (projeto "cofre-a-dois"). Estes dois valores são PÚBLICOS por natureza
+// (vão sempre para o browser); a segurança dos dados é garantida pelas políticas RLS.
 window.COFRE_CONFIG = {
-  url: 'COLOCAR_URL_DO_PROJETO',          // ex.: https://xxxxxxxx.supabase.co
-  key: 'COLOCAR_CHAVE_PUBLICA'            // chave "publishable" (sb_publishable_...) ou "anon"
+  url: 'https://bfseukytmycwizxzxuur.supabase.co',
+  key: 'sb_publishable_9slQIZLuyZnkBRvoGTxj5A_ZfbOl3CN'
 };
