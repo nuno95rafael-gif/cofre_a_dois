@@ -156,6 +156,7 @@ function vInicio(){
     }
     return `${note}<div class="cols"><div>
     <div class="card balance">
+      <div class="pair">${avatar('u1',36)}${S.users.u2?avatar('u2',36):''}</div>
       <div class="lbl">Saldo entre os dois <span class="muted">(só contas já pagas)</span></div>
       <div class="big">${big}</div>${proj}
       <button class="btn primary" id="settle" ${Math.abs(b)<0.005?'disabled style="opacity:.5"':''}>Acertar contas</button>
@@ -306,13 +307,15 @@ function vDefinicoes(){
   return `<h2 class="page">Definições</h2>
   <h3 class="sec" style="margin-top:4px">A tua conta</h3>
   <div class="card">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">${avatar(me,64)}
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><label class="btn ghost small" style="cursor:pointer">📷 ${S.users[me]&&S.users[me].avatar?'Mudar foto':'Pôr foto de perfil'}<input type="file" accept="image/*" id="avIn" style="display:none"></label>${S.users[me]&&S.users[me].avatar?'<button class="btn small ghost" id="avRm">Remover</button>':''}</div></div>
     <div class="field"><label for="myName">O teu nome</label><input class="inp" id="myName" value="${esc(nm(me))}" maxlength="40"></div>
     <p class="muted" style="font-size:13px;margin:0 0 10px">Sessão iniciada como ${esc(S.email||'')}</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary small" id="saveName">Guardar nome</button><button class="btn ghost small" id="logout">Terminar sessão</button></div>
   </div>
   <h3 class="sec">O casal</h3>
   <div class="card">
-    ${partner?`<p style="margin:0">👥 ${esc(nm(me))} e ${esc(partner.name)} partilham este cofre.</p>`:`<p style="margin:0 0 8px">Ainda falta a outra pessoa. Envia-lhe este código:</p>
+    ${partner?`<div style="display:flex;align-items:center;gap:10px"><div class="pair" style="margin:0">${avatar(me,36)}${avatar(o,36)}</div><p style="margin:0">${esc(nm(me))} e ${esc(partner.name)} partilham este cofre.</p></div>`:`<p style="margin:0 0 8px">Ainda falta a outra pessoa. Envia-lhe este código:</p>
     <div style="display:flex;gap:10px;align-items:center"><b style="font-size:26px;letter-spacing:.12em">${esc(S.household.invite_code)}</b><button class="btn small ghost" id="copyCode">Copiar</button></div>
     <p class="muted" style="font-size:12.5px;margin:8px 0 0">A outra pessoa abre a app, cria conta e escolhe “Entrar com código”.</p>`}
   </div>
@@ -510,6 +513,23 @@ const PH={urls:new Map(),
   async url(path){const c=this.urls.get(path);if(c&&c.exp>Date.now())return c.u;const{data,error}=await this.bucket().createSignedUrl(path,3600);if(error||!data)return null;this.urls.set(path,{u:data.signedUrl,exp:Date.now()+50*60000});return data.signedUrl},
   async move(path,scope){const np=photoPath(scope);const{error}=await this.bucket().copy(path,np);if(error)throw error;await this.del(path);return np}
 };
+/* ---------- fotos de perfil ---------- */
+const avPending=new Set();
+function avatar(slot,size=28){
+  const u=S.users[slot],p=u&&u.avatar,c=p&&PH.urls.get(p),url=c&&c.exp>Date.now()?c.u:null;
+  if(p&&!url&&!avPending.has(p)){avPending.add(p);PH.url(p).then(x=>{if(x)render()}).finally(()=>avPending.delete(p))}
+  return `<span class="av ${slot}" style="width:${size}px;height:${size}px;font-size:${Math.round(size*.45)}px">${url?`<img src="${esc(url)}" alt="">`:esc(nm(slot).charAt(0).toUpperCase())}</span>`;
+}
+async function cropSquare(file,size=512,q=0.85){
+  const src=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('img'));i.src=src});
+    const m=Math.min(img.naturalWidth,img.naturalHeight),out=Math.min(size,m);
+    const c=document.createElement('canvas');c.width=c.height=out;
+    c.getContext('2d').drawImage(img,(img.naturalWidth-m)/2,(img.naturalHeight-m)/2,m,m,0,0,out,out);
+    return await new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error('blob')),'image/jpeg',q));
+  }finally{URL.revokeObjectURL(src)}
+}
 async function compressImage(file,max=1600,q=0.72){
   const src=URL.createObjectURL(file);
   try{
@@ -677,7 +697,7 @@ function render(){
   if(wide())tabs.push(['definicoes','⚙️','Definições']);
   $('#tabs').innerHTML=tabs.map(([k,i,l])=>`<a href="#${k}" class="${k===r?'on':''}"><span class="i">${i}</span>${l}</a>`).join('');
   const v=S.viewer;
-  $('#who').innerHTML=`<span class="av ${v}">${esc(nm(v).charAt(0).toUpperCase())}</span><span>${esc(nm(v))}</span>`;
+  $('#who').innerHTML=`${avatar(v,28)}<span>${esc(nm(v))}</span>`;
   $('#fab').classList.toggle('hidden',r==='resumo'||r==='definicoes');
   document.body.classList.toggle('sp-pessoal',!isCasal());
   document.querySelectorAll('#space button').forEach(b=>b.classList.toggle('on',b.dataset.sp===UI.space));
@@ -706,7 +726,7 @@ const catOptions=sel=>S.categories.map(c=>`<option value="${c.id}" ${c.id===sel?
 function splitBlock(x){
   const s=x.split||{type:'equal',value:50};
   return `<div id="sharedBox" class="${x.scope==='partilhada'?'':'hidden'}">
-    <div class="field"><div class="lab" id="payerLab">Quem pagou</div>${seg('payer',[['u1',esc(nm('u1'))],['u2',esc(nm('u2'))]],x.payer||S.viewer)}</div>
+    <div class="field"><div class="lab" id="payerLab">Quem pagou</div>${seg('payer',[['u1',avatar('u1',20)+' '+esc(nm('u1'))],['u2',avatar('u2',20)+' '+esc(nm('u2'))]],x.payer||S.viewer)}</div>
     <div class="field"><div class="lab">Divisão</div>${seg('stype',[['equal','50/50'],['percent','Percentagem'],['fixed','Valor fixo']],s.type)}</div>
     <div class="field ${s.type==='equal'?'hidden':''}" id="svBox"><label for="sv" id="svLab"></label><input class="inp" id="sv" name="sv" inputmode="decimal" value="${s.type==='equal'?'':String(s.value).replace('.',',')}"></div>
     <div class="preview" id="prev"></div>
@@ -934,6 +954,7 @@ $('#view').addEventListener('click',e=>{
   if(t.dataset.rcv){e.stopPropagation();const x=S.incomeEntries.find(z=>z.id===t.dataset.rcv);x.received=true;return commit(`${x.desc}: recebido`)}
   if(t.dataset.inc)return entryForm(t.dataset.inc);
   if(t.dataset.src)return sourceForm(t.dataset.src);
+  if(t.id==='avRm')return Cloud.setAvatar(null);
   if(t.id==='saveName'){const v=$('#myName').value.trim();if(!v)return toast('O nome não pode ficar vazio');return Cloud.saveName(v)}
   if(t.id==='logout')return Cloud.signOut();
   if(t.id==='copyCode'){try{navigator.clipboard.writeText(S.household.invite_code).then(()=>toast('Código copiado'),()=>toast('Copia à mão: '+S.household.invite_code))}catch(e){toast('Copia à mão: '+S.household.invite_code)}return}
@@ -944,6 +965,7 @@ $('#view').addEventListener('click',e=>{
 });
 $('#view').addEventListener('input',e=>{if(e.target.id==='q'){UI.q=e.target.value;$('#dres').innerHTML=despesasResults();$('#qx').classList.toggle('hidden',!UI.q);$('#mnav').classList.toggle('hidden',!!UI.q.trim())}});
 $('#view').addEventListener('change',e=>{
+  if(e.target.id==='avIn'){const f=e.target.files[0];e.target.value='';if(f){toast('A enviar a foto…');cropSquare(f).then(b=>Cloud.setAvatar(b),()=>toast('Não foi possível ler esta imagem'))}return}
   if(e.target.name==='theme'){PREF.theme=e.target.value;savePref();render();return}
   if(e.target.id==='fst'){UI.status=e.target.value;render()}
   if(e.target.id==='fcat'){UI.cat=e.target.value;render()}

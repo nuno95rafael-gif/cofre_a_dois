@@ -79,13 +79,13 @@
   }
   async function loadData(){
     const hid=S.household.id;
-    const[rows,members]=await Promise.all([fetchAll('records','kind,id,data',hid),fetchAll('members','slot,display_name',hid)]);
+    const[rows,members]=await Promise.all([fetchAll('records','kind,id,data',hid),fetchAll('members','slot,display_name,avatar_path',hid)]);
     const fresh={};KINDS.forEach(([a])=>fresh[a]=[]);
     const ns=new Map();
     for(const r of rows){const a=ARR_OF[r.kind];if(!a)continue;fresh[a].push(r.data);ns.set(r.kind+'|'+r.id,JSON.stringify(r.data))}
     fresh.categories.sort((a,b)=>(a.sort??99)-(b.sort??99));
     Object.assign(S,fresh);snap=ns;
-    S.users={};for(const m of members)S.users[m.slot]={name:m.display_name};
+    S.users={};for(const m of members)S.users[m.slot]={name:m.display_name,avatar:m.avatar_path||null};
   }
   const sheetOpen=()=>document.getElementById('ov').classList.contains('open');
   async function refresh(){
@@ -237,7 +237,24 @@
     const{data:{user}}=await sb.auth.getUser();
     const{error}=await sb.from('members').update({display_name:v}).eq('user_id',user.id);
     if(error)return toast('Não foi possível guardar o nome');
-    S.users[S.viewer]={name:v};render();toast('Nome guardado');
+    S.users[S.viewer]={...S.users[S.viewer],name:v};render();toast('Nome guardado');
+  }
+  // foto de perfil: fica na pasta partilhada do cofre (os dois veem); blob=null remove
+  async function setAvatar(blob){
+    const{data:{user}}=await sb.auth.getUser();
+    const bucket=sb.storage.from('photos');
+    const old=S.users[S.viewer]&&S.users[S.viewer].avatar;
+    let path=null;
+    if(blob){
+      path=`${S.household.id}/shared/avatar_${S.viewer}_${uid()}.jpg`;
+      const{error}=await bucket.upload(path,blob,{contentType:'image/jpeg'});
+      if(error){console.error(error);return toast('Não foi possível enviar a foto')}
+    }
+    const{error}=await sb.from('members').update({avatar_path:path}).eq('user_id',user.id);
+    if(error){console.error(error);if(path)bucket.remove([path]);return toast('Não foi possível guardar a foto')}
+    if(old)bucket.remove([old]);
+    S.users[S.viewer]={...S.users[S.viewer],avatar:path};
+    render();toast(path?'Foto de perfil atualizada':'Foto removida');
   }
 
   async function boot(){
@@ -254,6 +271,6 @@
     await enter(session.user);
   }
 
-  window.Cloud={sb,persistSoon,persist,refresh,afterSheetClosed,signOut,saveName};
+  window.Cloud={sb,persistSoon,persist,refresh,afterSheetClosed,signOut,saveName,setAvatar};
   boot();
 })();
