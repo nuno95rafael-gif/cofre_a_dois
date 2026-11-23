@@ -44,6 +44,15 @@ function generate(){
       S.expenses.push({id:`rec_${r.id}_${d}`,desc:r.desc,amount:r.amount,cat:r.cat,date:d,status:'por_pagar',paidDate:null,scope:r.scope,owner:r.owner,payer:r.payer,split:{...r.split},recurringId:r.id,period:d});
     }
   }
+  // gastos fixos com pagamento automático (débito direto): ficam pagos quando chega a data
+  for(const e of S.expenses){
+    if(e.status!=='pago'&&e.date<=TODAY&&isAuto(e)){e.status='pago';e.paidDate=e.date}
+  }
+}
+function isAuto(e){
+  if(!e.recurringId||e.autoPay===false)return false;
+  const r=S.recurring.find(x=>x.id===e.recurringId);
+  return !!r&&r.autoPay!==false;
 }
 function nextDue(r){
   if(!r.active)return null;
@@ -87,6 +96,7 @@ let toastT;
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2200)}
 function statusBadge(e){
   if(e.status==='pago')return `<span class="badge b-paid">✓ Pago${e.paidDate?' '+fShort(e.paidDate):''}</span>`;
+  if(isAuto(e))return `<span class="badge b-pers">🔁 Automático a ${fShort(e.date)}</span>`;
   if(isLate(e))return `<span class="badge b-late">⚠ Em atraso</span>`;
   return `<span class="badge b-due">⏳ Por pagar</span>`;
 }
@@ -98,7 +108,7 @@ function expRow(e,opts={}){
     e.recurringId?'🔁 fixo':null].filter(Boolean).join(' · ');
   const extras=`${(e.photos&&e.photos.length)?` <span class="badge b-pers">📎 ${e.photos.length}</span>`:''}${e.notes?' <span class="badge b-pers" title="Tem notas">📝</span>':''}`;
   const share=shared?`<div class="share">tua parte ${eur(myPart(e))}</div>`:'';
-  const quick=opts.quick&&e.status!=='pago'?`<div><button class="btn small primary" data-pay="${e.id}" style="margin-top:4px">Marcar pago</button></div>`:'';
+  const quick=opts.quick&&e.status!=='pago'&&!isAuto(e)?`<div><button class="btn small primary" data-pay="${e.id}" style="margin-top:4px">Marcar pago</button></div>`:'';
   return `<div class="row" tabindex="0" data-exp="${e.id}">
     <div class="ico">${esc(c.icon)}</div>
     <div class="mid"><div class="t">${esc(e.desc)}</div><div class="s">${esc(sub)}</div><div>${statusBadge(e)}${extras}</div>${e.notes&&opts.showDate===false?`<div class="s" style="font-style:italic">“${esc(e.notes)}”</div>`:''}</div>
@@ -187,7 +197,7 @@ function expTable(list){
     <td class="num"><b>${eur(e.amount)}</b></td>
     ${c?`<td class="num">${eur(myPart(e))}</td>`:''}
     <td class="nowrap">${statusBadge(e)}</td>
-    <td class="num">${e.status!=='pago'?`<button class="btn small primary" data-pay="${e.id}">Marcar pago</button>`:''}</td></tr>`}).join('');
+    <td class="num">${e.status!=='pago'&&!isAuto(e)?`<button class="btn small primary" data-pay="${e.id}">Marcar pago</button>`:''}</td></tr>`}).join('');
   return `<table class="tbl"><thead>${head}</thead><tbody>${rows}</tbody></table>`;
 }
 function despesasResults(){
@@ -240,7 +250,7 @@ function vFixos(){
     const c=cat(r.cat),nd=nextDue(r);
     const eq=r.freq>1?` · ≈ ${eur(r.amount/r.freq)}/mês`:'';
     const pz=r.active?'':`<span class="badge b-pause">⏸ Em pausa</span>`;
-    const who=r.scope==='partilhada'?` · paga ${r.payer===S.viewer?'tu':nm(r.payer)}`:'';
+    const who=(r.scope==='partilhada'?` · paga ${r.payer===S.viewer?'tu':nm(r.payer)}`:'')+(r.autoPay!==false?' · 🔁 automático':'');
     const part=r.scope==='partilhada'?`<div class="share">tua parte ${eur(shares(r)[S.viewer])}</div>`:'';
     return `<div class="row" tabindex="0" data-rec="${r.id}" style="${r.active?'':'opacity:.6'}">
       <div class="ico">${esc(c.icon)}</div>
@@ -710,7 +720,7 @@ function wireSplit(s,isRec){
     const scope=fd.get('scope');s.querySelector('#sharedBox').classList.toggle('hidden',scope!=='partilhada');
     const st=fd.get('stype');s.querySelector('#svBox').classList.toggle('hidden',st==='equal');
     s.querySelector('#svLab').textContent=st==='percent'?`Parte de ${nm('u1')} (%)`:`Parte de ${nm('u1')} (€)`;
-    if(!isRec){const status=fd.get('status');s.querySelector('#paidBox').classList.toggle('hidden',status!=='pago');s.querySelector('#payerLab').textContent=status==='pago'?'Quem pagou':'Quem vai pagar'}
+    if(!isRec){const unpaid=!!fd.get('unpaid');s.querySelector('#payerLab').textContent=unpaid?'Quem vai pagar':'Quem pagou';s.querySelector('#dtLab').textContent=unpaid?'Vencimento':'Data'}
     const amount=num(fd.get('amount'));
     const tmp={scope:'partilhada',amount:isNaN(amount)?0:amount,split:{type:st,value:num(fd.get('sv'))||0}};
     const sh=shares(tmp);
@@ -744,10 +754,9 @@ function expenseForm(id,prefill){
       <div class="field"><label for="a">Valor (€)</label><input class="inp" id="a" name="amount" inputmode="decimal" placeholder="0,00" value="${x.amount===''?'':String(x.amount).replace('.',',')}"></div>
       <div class="field"><label for="c">Categoria</label><select class="inp" id="c" name="cat">${catOptions(x.cat)}</select></div>
     </div>
-    <div class="field"><div class="lab">Estado</div>${seg('status',[['pago','✓ Pago'],['por_pagar','⏳ Por pagar']],x.status)}</div>
     <div class="row2">
-      <div class="field"><label for="dt">Data / vencimento</label><input class="inp" type="date" id="dt" name="date" value="${x.date}"></div>
-      <div class="field" id="paidBox"><label for="pd">Data de pagamento</label><input class="inp" type="date" id="pd" name="paidDate" value="${x.paidDate||TODAY}"></div>
+      <div class="field"><label for="dt" id="dtLab">Data</label><input class="inp" type="date" id="dt" name="date" value="${x.date}"></div>
+      <div class="field" style="display:flex;align-items:flex-end"><label class="check" style="margin:0 0 12px"><input type="checkbox" name="unpaid" ${x.status!=='pago'?'checked':''}> ⏳ Ainda não está pago</label></div>
     </div>
     <input type="hidden" name="scope" value="${x.scope}">
     ${splitBlock(x)}
@@ -798,13 +807,14 @@ function expenseForm(id,prefill){
       if(!fd.get('date'))return err.textContent='Indica a data.';
       const scope=fd.get('scope');let split={type:'equal',value:50};
       if(scope==='partilhada'){const rs=readSplit(fd,amount);if(!rs.ok)return err.textContent=rs.msg;split=rs.split}
-      const status=fd.get('status');
+      const status=fd.get('unpaid')?'por_pagar':'pago';
       const owner=ex?ex.owner:(x.owner||S.viewer);
-      const data={desc,amount,cat:fd.get('cat'),date:fd.get('date'),status,paidDate:status==='pago'?(fd.get('paidDate')||TODAY):null,scope,owner,payer:scope==='partilhada'?fd.get('payer'):owner,split,notes:fd.get('notes').trim(),photos:[...photos]};
+      const data={desc,amount,cat:fd.get('cat'),date:fd.get('date'),status,paidDate:status==='pago'?((ex&&ex.status==='pago'&&ex.paidDate)||fd.get('date')):null,scope,owner,payer:scope==='partilhada'?fd.get('payer'):owner,split,notes:fd.get('notes').trim(),photos:[...photos]};
       removed.forEach(id=>PH.del(id));
       const same=t=>t.scope===scope&&(scope==='partilhada'||t.owner===owner);
       S.templates=S.templates.filter(t=>!(same(t)&&(norm(t.desc)===norm(desc)||(ex&&norm(t.desc)===norm(ex.desc)))));
       if(fd.get('tpl'))S.templates.push({id:uid(),scope,owner,desc,amount,cat:data.cat,split:{...split}});
+      if(ex&&ex.recurringId&&status!=='pago')data.autoPay=false; // marcado à mão como por pagar: não pagar sozinho
       if(ex)Object.assign(ex,data);else S.expenses.push({id:uid(),recurringId:null,period:null,...data});
       sheetCancel=null;closeSheet();const saved=ex||S.expenses[S.expenses.length-1];commit((ex?'Despesa atualizada':'Despesa adicionada')+budgetToast(saved));
     };
@@ -828,7 +838,8 @@ function recurringForm(id,prefill){
     </div>
     <input type="hidden" name="scope" value="${x.scope}">
     ${splitBlock(x)}
-    <p class="muted" style="font-size:12.5px">${ex?'As alterações aplicam-se aos pagamentos futuros ainda por pagar; os já pagos mantêm-se.':'A app cria automaticamente cada pagamento como “por pagar” quando se aproxima o vencimento.'}</p>
+    <label class="check"><input type="checkbox" name="autoPay" ${x.autoPay!==false?'checked':''}> ✓ Fica pago automaticamente na data (débito direto)</label>
+    <p class="muted" style="font-size:12.5px">${ex?'As alterações aplicam-se aos pagamentos futuros ainda por pagar; os já pagos mantêm-se.':'Cada pagamento aparece sozinho na data. Desliga a opção acima se preferires confirmar cada pagamento à mão.'}</p>
     ${hist.length?`<div class="hist"><div class="muted" style="font-size:12px">Últimos pagamentos</div>${hist.map(e=>`<div><span>${fDate(e.date)} · ${e.status==='pago'?'✓ pago':isLate(e)?'⚠ em atraso':'⏳ por pagar'}</span><b>${eur(e.amount)}</b></div>`).join('')}</div>`:''}
     <div class="err" id="err"></div>
     ${ex?`<div class="actions" style="margin-top:8px"><button type="button" class="btn" id="pause">${ex.active?'⏸ Pausar':'▶ Retomar'}</button><button type="button" class="btn danger" id="del">Apagar</button></div>`:''}
@@ -855,13 +866,13 @@ function recurringForm(id,prefill){
       if(!(amount>0))return err.textContent='Indica um valor maior que zero.';
       const scope=fd.get('scope');let split={type:'equal',value:50};
       if(scope==='partilhada'){const rs=readSplit(fd,amount);if(!rs.ok)return err.textContent=rs.msg;split=rs.split}
-      const data={desc,amount,cat:fd.get('cat'),freq:+fd.get('freq'),scope,payer:scope==='partilhada'?fd.get('payer'):(ex?ex.owner:S.viewer),split};
+      const data={desc,amount,cat:fd.get('cat'),freq:+fd.get('freq'),autoPay:!!fd.get('autoPay'),scope,payer:scope==='partilhada'?fd.get('payer'):(ex?ex.owner:S.viewer),split};
       if(ex){
         const freqChanged=data.freq!==ex.freq;
         Object.assign(ex,data);
         if(scope==='pessoal'&&ex.scope!=='pessoal')ex.owner=S.viewer;
         if(freqChanged){removeFutureUnpaid(ex);ex.genFrom=TODAY}
-        for(const e of S.expenses)if(e.recurringId===ex.id&&e.status!=='pago'&&e.date>=TODAY)Object.assign(e,{desc,amount,cat:data.cat,scope,owner:ex.owner,payer:data.payer,split:{...split}});
+        for(const e of S.expenses)if(e.recurringId===ex.id&&e.status!=='pago'&&e.date>=TODAY)Object.assign(e,{desc,amount,cat:data.cat,scope,owner:ex.owner,payer:data.payer,split:{...split},autoPay:data.autoPay});
         closeSheet();commit('Gasto fixo atualizado');
       }else{
         const start=fd.get('start');if(!start)return err.textContent='Indica o próximo vencimento.';
