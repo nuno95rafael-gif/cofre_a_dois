@@ -25,8 +25,48 @@
     return r.scope==='partilhada'?{visibility:'shared',owner_slot:null}:{visibility:'private',owner_slot:r.owner};
   }
 
+  /* ---------------- cópia local (para abrir rápido e funcionar sem internet) ---------------- */
+  // Guarda no telemóvel o último estado do cofre e o que ainda falta enviar ao servidor.
+  let uidCur=null,cacheTimer=null,lastSyncOk=true;
+  const CK=u=>'cofre-data-'+u;
+  function dirtyInfo(){
+    const dirty=[],seen=new Set();
+    for(const[arr,kind]of KINDS)for(const r of S[arr]){const k=kind+'|'+r.id;seen.add(k);if(snap.get(k)!==JSON.stringify(r))dirty.push(k)}
+    const deleted=[...snap.keys()].filter(k=>!seen.has(k));
+    return{dirty,deleted};
+  }
+  const hasDirty=()=>{const d=dirtyInfo();return d.dirty.length+d.deleted.length>0};
+  function saveCacheNow(){
+    if(!S||!S.household||!uidCur)return;
+    try{
+      const data={v:1,savedAt:Date.now(),household:S.household,viewer:S.viewer,email:S.email,users:S.users,...dirtyInfo()};
+      KINDS.forEach(([a])=>data[a]=S[a]);
+      localStorage.setItem(CK(uidCur),JSON.stringify(data));localStorage.setItem('cofre-last-user',uidCur);
+    }catch(e){console.warn('Sem espaço para a cópia local',e)}
+  }
+  function saveCache(){clearTimeout(cacheTimer);cacheTimer=setTimeout(saveCacheNow,300)}
+  function readCache(u){try{const c=JSON.parse(localStorage.getItem(CK(u))||'null');return c&&c.v===1&&c.household?c:null}catch(e){return null}}
+  function restoreCache(c,email){
+    S={household:c.household,viewer:c.viewer,email:email||c.email,users:c.users||{}};
+    KINDS.forEach(([a])=>S[a]=c[a]||[]);
+    const dirty=new Set(c.dirty||[]);snap=new Map();
+    for(const[arr,kind]of KINDS)for(const r of S[arr]){const k=kind+'|'+r.id;if(!dirty.has(k))snap.set(k,JSON.stringify(r))}
+    for(const k of c.deleted||[])snap.set(k,'__apagado__'); // ainda por apagar no servidor
+    signature=sig();
+  }
+  function clearCache(u){try{if(u)localStorage.removeItem(CK(u));localStorage.removeItem('cofre-last-user')}catch(e){}}
+  // indicador de ligação no topo
+  function netStatus(){
+    const el=document.getElementById('net');if(!el)return;
+    const off=!navigator.onLine,pend=S&&S.household&&!lastSyncOk;
+    el.classList.toggle('hidden',!(off||pend));
+    el.innerHTML=off?'📴<span class="nt"> Sem internet</span>':'⏳<span class="nt"> Por sincronizar</span>';
+    el.title=off?'Podes continuar a usar a app: as alterações ficam guardadas no telemóvel e são enviadas quando voltar a ligação.':'Há alterações à espera de ser enviadas para o servidor.';
+  }
+  window.addEventListener('offline',netStatus);
+
   /* ---------------- gravação ---------------- */
-  function persistSoon(){clearTimeout(timer);timer=setTimeout(()=>{timer=null;persist()},250)}
+  function persistSoon(){clearTimeout(timer);timer=setTimeout(()=>{timer=null;persist()},250);saveCache()}
   async function persist(){
     if(!S||!S.household)return;
     if(persisting){again=true;return}
@@ -52,10 +92,10 @@
           part.forEach(id=>snap.delete(kind+'|'+id));
         }
       }
-      signature=sig();
+      signature=sig();lastSyncOk=true;netStatus();saveCache();
     }catch(e){
-      console.error('Erro a guardar',e);
-      toast(navigator.onLine?'⚠ Não foi possível guardar. Vou tentar outra vez.':'📴 Sem internet: guardo quando voltar a ligação.');
+      console.error('Erro a guardar',e);lastSyncOk=false;netStatus();saveCache();
+      if(navigator.onLine)toast('⚠ Não foi possível guardar. Vou tentar outra vez.');
       setTimeout(persistSoon,navigator.onLine?5000:15000);
     }finally{
       persisting=false;
@@ -91,6 +131,7 @@
   async function refresh(){
     if(!S||!S.household)return;
     if(sheetOpen()||persisting||timer){refreshPending=true;return}
+    if(hasDirty()){refreshPending=true;persistSoon();return} // primeiro enviar o que está só no telemóvel
     try{
       const before=signature,users=JSON.stringify(S.users);
       await loadData();
@@ -104,6 +145,7 @@
       }
       persistSoon(); // grava o que o generate() possa ter criado
     }catch(e){console.warn('Falha a atualizar',e)}
+    netStatus();
   }
   function refreshSoon(){clearTimeout(refreshTimer);refreshTimer=setTimeout(refresh,500)}
   function afterSheetClosed(){if(refreshPending){refreshPending=false;setTimeout(refresh,300)}}
@@ -117,7 +159,7 @@
       .subscribe();
   }
   document.addEventListener('visibilitychange',()=>{if(!S||!S.household)return;if(document.visibilityState==='visible')refreshSoon();else persist()});
-  window.addEventListener('online',()=>{if(S&&S.household){persistSoon();refreshSoon()}});
+  window.addEventListener('online',()=>{netStatus();if(S&&S.household){persistSoon();refreshSoon()}});
   setInterval(()=>{if(S&&S.household&&document.visibilityState==='visible')refresh()},60000);
 
   /* ---------------- ecrãs de entrada ---------------- */
@@ -207,6 +249,15 @@
   /* ---------------- entrar na app ---------------- */
   async function enter(user){
     if(!user)return showAuth();
+    uidCur=user.id;
+    const cached=readCache(user.id);
+    if(cached){
+      restoreCache(cached,user.email);
+      generate();genIncome();
+      ungate();render();subscribe();netStatus();
+      setTimeout(()=>{persistSoon();refreshSoon()},50);
+      return;
+    }
     loading();
     try{
       const{data:m,error}=await sb.from('members').select('household_id,slot').eq('user_id',user.id).maybeSingle();
@@ -220,7 +271,7 @@
       if(!S.categories.length)S.categories=DEFAULT_CATEGORIES.map((c,i)=>({...c,sort:i}));
       signature=sig();
       generate();genIncome();
-      ungate();render();persistSoon();subscribe();
+      ungate();render();persistSoon();subscribe();netStatus();
     }catch(e){
       console.error(e);
       gate(`<div class="card"><p>Não foi possível abrir o cofre: ${esc(ptErr(e))}</p><button class="btn primary" onclick="location.reload()">Tentar outra vez</button></div>`);
@@ -229,6 +280,7 @@
   async function signOut(){
     try{if(S&&S.household)await persist()}catch(e){}
     if(channel){sb.removeChannel(channel);channel=null}
+    clearCache(uidCur);uidCur=null;
     S=null;snap=new Map();
     await sb.auth.signOut();
     location.hash='';showAuth();
@@ -266,10 +318,18 @@
       else if(ev==='SIGNED_OUT'&&S){S=null;showAuth()}
     });
     if(/type=recovery/.test(location.hash))return; // o evento PASSWORD_RECOVERY trata disto
-    const{data:{session}}=await sb.auth.getSession();
-    if(!session)return showAuth();
+    let session=null;
+    try{({data:{session}}=await sb.auth.getSession())}catch(e){}
+    if(!session){
+      const last=(()=>{try{return localStorage.getItem('cofre-last-user')}catch(e){return null}})();
+      if(!navigator.onLine&&last&&readCache(last))return enter({id:last,email:null});
+      return showAuth();
+    }
     await enter(session.user);
   }
+
+  // trabalho offline: o service worker guarda os ficheiros da app
+  if('serviceWorker' in navigator&&location.protocol==='https:'){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(e=>console.warn('SW',e)))}
 
   window.Cloud={sb,persistSoon,persist,refresh,afterSheetClosed,signOut,saveName,setAvatar};
   boot();

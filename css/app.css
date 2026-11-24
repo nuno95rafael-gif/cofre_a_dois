@@ -276,3 +276,7 @@ code{background:var(--surface2);padding:1px 5px;border-radius:5px}
 .trend.trend12,.tlabels.trend12{gap:4px}
 .trend.trend12 .tv{font-size:10.5px}
 .tlabels.trend12 span{font-size:10.5px}
+/* ---------- indicador de ligação ---------- */
+.net{font-size:12px;font-weight:600;padding:5px 9px;border-radius:999px;background:var(--warn-bg);color:var(--warn);white-space:nowrap;cursor:help}
+.brand{white-space:nowrap}
+@media (max-width:440px){.net .nt{display:none}.net{padding:5px 8px}}
