@@ -262,3 +262,17 @@ body.gated .app,body.gated nav.tabs,body.gated .fab{display:none!important}
 body.gated{padding-left:0!important}
 .demo-note a{color:var(--accent);font-weight:600}
 code{background:var(--surface2);padding:1px 5px;border-radius:5px}
+
+/* ---------- deslizar para duplicar / apagar ---------- */
+.swipe{position:relative;overflow:hidden;background:var(--surface)}
+.swipe>.row{position:relative;background:var(--surface);transition:transform .2s ease;border-top:0;touch-action:pan-y}
+.swipe+.swipe>.row,.dayhdr+.swipe>.row{border-top:1px solid var(--line)}
+.dayhdr+.swipe>.row{border-top:0}
+.sw-act{position:absolute;top:0;right:0;bottom:0;display:flex;width:150px}
+.sw-act button{flex:1;border:0;color:#fff;font-size:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer}
+.sw-act small{font-size:11px;font-weight:600}
+.sw-dup{background:#2a78d6}.sw-del{background:#d03b3b}
+/* ---------- evolução 12 meses ---------- */
+.trend.trend12,.tlabels.trend12{gap:4px}
+.trend.trend12 .tv{font-size:10.5px}
+.tlabels.trend12 span{font-size:10.5px}

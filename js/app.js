@@ -109,12 +109,19 @@ function expRow(e,opts={}){
   const extras=`${(e.photos&&e.photos.length)?` <span class="badge b-pers">📎 ${e.photos.length}</span>`:''}${e.notes?' <span class="badge b-pers" title="Tem notas">📝</span>':''}`;
   const share=shared?`<div class="share">tua parte ${eur(myPart(e))}</div>`:'';
   const quick=opts.quick&&e.status!=='pago'&&!isAuto(e)?`<div><button class="btn small primary" data-pay="${e.id}" style="margin-top:4px">Marcar pago</button></div>`:'';
-  return `<div class="row" tabindex="0" data-exp="${e.id}">
+  return `<div class="swipe"><div class="sw-act"><button class="sw-dup" data-swdup="${e.id}" tabindex="-1">⧉<small>Duplicar</small></button><button class="sw-del" data-swdel="${e.id}" tabindex="-1">🗑<small>Apagar</small></button></div><div class="row" tabindex="0" data-exp="${e.id}">
     <div class="ico">${esc(c.icon)}</div>
     <div class="mid"><div class="t">${esc(e.desc)}</div><div class="s">${esc(sub)}</div><div>${statusBadge(e)}${extras}</div>${e.notes&&opts.showDate===false?`<div class="s" style="font-style:italic">“${esc(e.notes)}”</div>`:''}</div>
     <div class="r"><div class="amt">${eur(e.amount)}</div>${share}${quick}</div>
-  </div>`;
+  </div></div>`;
 }
+function dupPrefill(ex){return{desc:ex.desc,amount:ex.amount,cat:ex.cat,scope:ex.scope,owner:ex.owner,payer:ex.payer,split:{...ex.split},notes:ex.notes||'',date:TODAY,paidDate:TODAY,status:'pago'}}
+function deleteExpense(ex,extra=[]){
+  if(ex.recurringId){const r=S.recurring.find(r=>r.id===ex.recurringId);if(r&&!r.skip.includes(ex.period))r.skip.push(ex.period)}
+  [...(ex.photos||[]),...extra].forEach(id=>PH.del(id));
+  S.expenses=S.expenses.filter(e=>e.id!==ex.id);commit('Despesa apagada');
+}
+function askDeleteExpense(ex,extra=[]){confirmSheet('Apagar despesa?',`"${ex.desc}" de ${eur(ex.amount)} vai ser apagada${(ex.photos||[]).length?', com as fotos':''}.`,'Apagar',()=>deleteExpense(ex,extra))}
 function splitShort(e){const sh=shares(e);const a=Math.round(sh.u1/e.amount*100);return `${a}/${100-a}`}
 
 /* ---------- vistas ---------- */
@@ -159,7 +166,7 @@ function vInicio(){
       <div class="pair">${avatar('u1',36)}${S.users.u2?avatar('u2',36):''}</div>
       <div class="lbl">Saldo entre os dois <span class="muted">(só contas já pagas)</span></div>
       <div class="big">${big}</div>${proj}
-      <button class="btn primary" id="settle" ${Math.abs(b)<0.005?'disabled style="opacity:.5"':''}>Acertar contas</button>
+      <button class="btn primary" id="settle" ${Math.abs(b)<0.005?'disabled style="opacity:.5"':''}>${Math.abs(b)<0.005?'Acertar contas':`Acertar ${eur(Math.abs(b))}`}</button>
       ${hist.length?`<div class="hist"><div class="muted" style="font-size:12px">Últimos acertos</div>${hist.map(t=>`<div><span>${fShort(t.date)} · ${esc(you(t.from))} → ${esc(you(t.to))}${t.note?' · '+esc(t.note):''}</span><b>${eur(t.amount)}</b></div>`).join('')}</div>`:''}
     </div>
     <div class="grid2">
@@ -238,6 +245,7 @@ function vDespesas(){
       ${S.categories.map(c=>`<option value="${c.id}" ${UI.cat===c.id?'selected':''}>${esc(c.icon+' '+c.name)}</option>`).join('')}
     </select>
   </div>
+  ${!wide()&&!PREF.swiped&&('ontouchstart' in window)?'<p class="muted sw-hint" style="font-size:12.5px;margin:0 2px 8px">💡 Desliza uma despesa para a esquerda para a duplicar ou apagar.</p>':''}
   <div id="dres">${despesasResults()}</div>`;
 }
 
@@ -299,7 +307,36 @@ function vResumo(){
   </div><div>
   <h3 class="sec">Últimos 6 meses</h3>
   <div class="card"><div class="trend">${cols}</div><div class="tlabels">${months.map(m=>`<span class="${m===k?'sel':''}">${MAB[+m.slice(5)-1]}</span>`).join('')}</div>
-  <p class="muted" style="font-size:12px;margin:8px 0 0">Toca numa barra para ver esse mês.</p></div></div></div>`;
+  <p class="muted" style="font-size:12px;margin:8px 0 0">Toca numa barra para ver esse mês.</p></div></div></div>
+  ${evolutionBlock(k)}`;
+}
+function evolutionBlock(k){
+  const months=[];for(let i=11;i>=0;i--)months.push(ymAdd(k,-i));
+  const inRange=S.expenses.filter(inSpace).filter(e=>ym(e.date)>=months[0]&&ym(e.date)<=k);
+  const tot={};for(const e of inRange)tot[e.cat]=(tot[e.cat]||0)+e.amount;
+  const cats=Object.keys(tot).sort((a,b)=>tot[b]-tot[a]);
+  if(!cats.length)return '';
+  if(!UI.evoCat||!tot[UI.evoCat])UI.evoCat=cats[0];
+  const c=UI.evoCat;
+  const vals=months.map(m=>inRange.filter(e=>e.cat===c&&ym(e.date)===m).reduce((a,e)=>a+e.amount,0));
+  const mx=Math.max(...vals,1),used=vals.filter(v=>v>0),avg=used.length?used.reduce((a,v)=>a+v,0)/used.length:0;
+  const iMax=vals.indexOf(Math.max(...vals));
+  const cols=months.map((m,i)=>{const h=vals[i]/mx*100,sel=m===k;
+    return `<div class="tcol ${sel?'sel':''}" tabindex="0" data-rm="${m}" data-tip="${esc(cat(c).name)} · ${esc(ymLabel(m))}|${eur(vals[i])}">${sel||i===iMax?`<div class="tv" style="bottom:calc(${h}% + 4px)">${Math.round(vals[i])}€</div>`:''}<div class="tb" style="height:${h}%"></div></div>`}).join('');
+  const prev=vals[10],cur=vals[11];
+  const diff=prev>0?`${cur>=prev?'▲ +':'▼ −'}${eur(Math.abs(cur-prev))}`:'';
+  return `<h3 class="sec">📈 Evolução por categoria (12 meses)</h3>
+  <div class="card">
+    <select class="chip" id="evoCat" aria-label="Categoria" style="margin-bottom:6px">${cats.map(id=>`<option value="${id}" ${id===c?'selected':''}>${esc(cat(id).icon+' '+cat(id).name)} · ${eur(tot[id])}</option>`).join('')}</select>
+    <div class="trend trend12">${cols}</div>
+    <div class="tlabels trend12">${months.map(m=>`<span class="${m===k?'sel':''}">${MAB[+m.slice(5)-1].slice(0,1).toUpperCase()}${MAB[+m.slice(5)-1].slice(1,3)}</span>`).join('')}</div>
+    <div class="hist" style="border:0;margin-top:8px;padding:0">
+      <div><span>Média nos meses com gastos</span><b>${eur(avg)}</b></div>
+      <div><span>Mês mais alto</span><b>${esc(ymLabel(months[iMax]))} · ${eur(vals[iMax])}</b></div>
+      <div><span>Total em 12 meses</span><b>${eur(tot[c])}</b></div>
+      ${diff?`<div><span>${esc(ymLabel(k))} vs mês anterior</span><b>${diff}</b></div>`:''}
+    </div>
+  </div>`;
 }
 
 function vDefinicoes(){
@@ -756,6 +793,10 @@ function readSplit(fd,amount){
   return{ok:true,split:{type:'fixed',value:r2(v)}};
 }
 
+// descrições já usadas neste espaço (mais recentes primeiro) e a última despesa com essa descrição
+function spaceExpenses(scope){return S.expenses.filter(e=>scope==='partilhada'?e.scope==='partilhada':(e.scope==='pessoal'&&e.owner===S.viewer))}
+function pastDescs(scope){const seen=new Set(),out=[];for(const e of spaceExpenses(scope).sort((a,b)=>b.date.localeCompare(a.date))){const k=norm(e.desc);if(!seen.has(k)){seen.add(k);out.push(e.desc)}if(out.length>=60)break}return out}
+function lastWith(scope,desc){const k=norm(desc).trim();if(!k)return null;return spaceExpenses(scope).filter(e=>norm(e.desc).trim()===k).sort((a,b)=>b.date.localeCompare(a.date))[0]||null}
 const tplFor=()=>S.templates.filter(t=>isCasal()?t.scope==='partilhada':(t.scope==='pessoal'&&t.owner===S.viewer));
 function firstFutureMonthly(date){let d=date,k=1;do{d=addMonths(date,k++)}while(d<TODAY&&k<600);return d}
 function expenseForm(id,prefill){
@@ -769,7 +810,8 @@ function expenseForm(id,prefill){
   ${ex&&ex.recurringId?'<p class="preview" style="margin-top:-4px">🔁 Gerada por um gasto fixo. As alterações aqui só afetam este pagamento.</p>':''}
   ${tpls.length?`<div class="lab" style="font-size:12.5px;font-weight:600;color:var(--ink2);margin-bottom:5px">⭐ Frequentes</div><div class="filters" id="tpls">${tpls.map(t=>`<button type="button" class="chip" data-tpl="${t.id}">${esc(cat(t.cat).icon)} ${esc(t.desc)}${t.amount?` · ${eur(t.amount)}`:''}</button>`).join('')}</div>`:''}
   <form novalidate>
-    <div class="field"><label for="d">Descrição</label><input class="inp" id="d" name="desc" value="${esc(x.desc)}" placeholder="Ex.: Supermercado" maxlength="60"></div>
+    <div class="field"><label for="d">Descrição</label><input class="inp" id="d" name="desc" value="${esc(x.desc)}" placeholder="Ex.: Supermercado" maxlength="60" list="descList" autocomplete="off">
+      <datalist id="descList">${pastDescs(x.scope).map(d=>`<option value="${esc(d)}">`).join('')}</datalist><div id="lastHint"></div></div>
     <div class="row2">
       <div class="field"><label for="a">Valor (€)</label><input class="inp" id="a" name="amount" inputmode="decimal" placeholder="0,00" value="${x.amount===''?'':String(x.amount).replace('.',',')}"></div>
       <div class="field"><label for="c">Categoria</label><select class="inp" id="c" name="cat">${catOptions(x.cat)}</select></div>
@@ -793,6 +835,19 @@ function expenseForm(id,prefill){
   </form>`,s=>{
     wireSplit(s,false);
     const f=s.querySelector('form');
+    if(!ex){
+      const hint=s.querySelector('#lastHint');let lastKey='';
+      const onDesc=()=>{
+        const l=lastWith(x.scope,f.desc.value);const key=l?l.id:'';if(key===lastKey)return;lastKey=key;
+        if(!l){hint.innerHTML='';return}
+        f.cat.value=l.cat;
+        if(x.scope==='partilhada'&&l.split){const st=f.querySelector(`input[name=stype][value=${l.split.type}]`);if(st){st.checked=true;f.sv.value=l.split.type==='equal'?'':String(l.split.value).replace('.',',')}}
+        f.dispatchEvent(new Event('change'));
+        hint.innerHTML=`<div class="preview" style="margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:8px"><span>Última vez: <b>${eur(l.amount)}</b> a ${fShort(l.date)} · ${esc(cat(l.cat).name)}</span><button type="button" class="btn small" id="useLast">Usar ${eur(l.amount)}</button></div>`;
+        hint.querySelector('#useLast').onclick=()=>{f.amount.value=String(l.amount).replace('.',',');f.dispatchEvent(new Event('input'));f.dt.focus()};
+      };
+      f.desc.addEventListener('input',onDesc);f.desc.addEventListener('change',onDesc);
+    }
     const drawThumbs=()=>{const t=s.querySelector('#thumbs');t.innerHTML=photos.map((p,i)=>`<div class="thumb" data-ph="${p}"><img alt="Foto ${i+1}" data-open="${i}"><button type="button" data-rmph="${p}" aria-label="Remover foto">✕</button></div>`).join('');fillThumbs(t)};
     drawThumbs();
     s.querySelector('#thumbs').onclick=ev=>{const r=ev.target.closest('[data-rmph]');if(r){const id=r.dataset.rmph;photos.splice(photos.indexOf(id),1);removed.push(id);return drawThumbs()}const o=ev.target.closest('[data-open]');if(o)viewPhotos(photos,+o.dataset.open)};
@@ -811,13 +866,10 @@ function expenseForm(id,prefill){
     const x1=s.querySelector('[data-x]');x1&&(x1.onclick=cancel);
     sheetCancel=()=>added.forEach(id=>PH.del(id));
     if(ex){
-      s.querySelector('#dup').onclick=()=>{sheetCancel();sheetCancel=null;closeSheet();expenseForm(null,{desc:ex.desc,amount:ex.amount,cat:ex.cat,scope:ex.scope,owner:ex.owner,payer:ex.payer,split:{...ex.split},notes:ex.notes||'',date:TODAY,paidDate:TODAY,status:'pago'})};
+      s.querySelector('#dup').onclick=()=>{sheetCancel();sheetCancel=null;closeSheet();expenseForm(null,dupPrefill(ex))};
       const mv=s.querySelector('#mv');mv&&(mv.onclick=()=>{sheetCancel();sheetCancel=null;moveExpense(ex)});
       const mk=s.querySelector('#mkrec');mk&&(mk.onclick=()=>{sheetCancel();sheetCancel=null;closeSheet();recurringForm(null,{desc:ex.desc,amount:ex.amount,cat:ex.cat,freq:1,start:firstFutureMonthly(ex.date),scope:ex.scope,owner:ex.owner,payer:ex.payer,split:{...ex.split}})});
-      s.querySelector('#del').onclick=()=>confirmSheet('Apagar despesa?',`"${ex.desc}" de ${eur(ex.amount)} vai ser apagada${(ex.photos||[]).length?', com as fotos':''}.`,'Apagar',()=>{
-        if(ex.recurringId){const r=S.recurring.find(r=>r.id===ex.recurringId);if(r&&!r.skip.includes(ex.period))r.skip.push(ex.period)}
-        [...(ex.photos||[]),...added].forEach(id=>PH.del(id));
-        S.expenses=S.expenses.filter(e=>e.id!==ex.id);commit('Despesa apagada')});
+      s.querySelector('#del').onclick=()=>askDeleteExpense(ex,added);
     }
     f.onsubmit=ev=>{
       ev.preventDefault();const fd=new FormData(f);const err=s.querySelector('#err');
@@ -936,7 +988,11 @@ $('#themeBtn').onclick=()=>{const t=PREF.theme||'auto';const dark=t==='dark'||(t
 try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if((PREF.theme||'auto')==='auto')applyTheme()})}catch(e){}
 $('#fab').onclick=()=>route()==='fixos'?recurringForm():route()==='ganhos'?incomeChooser():expenseForm();
 $('#view').addEventListener('click',e=>{
+  const open=e.target.closest('.swipe.open');
+  if(open&&!e.target.closest('.sw-act')){closeSwipes();return}
   const t=e.target.closest('button,[data-exp],[data-rec],[data-rm],[data-inc],[data-src],[data-goal]');if(!t)return;
+  if(t.dataset.swdel){closeSwipes();const x=S.expenses.find(z=>z.id===t.dataset.swdel);return x&&askDeleteExpense(x)}
+  if(t.dataset.swdup){closeSwipes();const x=S.expenses.find(z=>z.id===t.dataset.swdup);return x&&expenseForm(null,dupPrefill(x))}
   if(t.dataset.pay){e.stopPropagation();const x=S.expenses.find(z=>z.id===t.dataset.pay);x.status='pago';x.paidDate=TODAY;commit(`"${x.desc}" marcada como paga`);return}
   if(t.id==='settle')return settleForm();
   if(t.dataset.exp)return expenseForm(t.dataset.exp);
@@ -969,8 +1025,29 @@ $('#view').addEventListener('change',e=>{
   if(e.target.name==='theme'){PREF.theme=e.target.value;savePref();render();return}
   if(e.target.id==='fst'){UI.status=e.target.value;render()}
   if(e.target.id==='fcat'){UI.cat=e.target.value;render()}
+  if(e.target.id==='evoCat'){UI.evoCat=e.target.value;render()}
 });
 $('#view').addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-exp],[data-rec],[data-rm],[data-inc],[data-src],[data-goal]')){e.preventDefault();e.target.click()}});
+/* deslizar uma despesa para a esquerda: duplicar / apagar (só ecrãs táteis) */
+const SWW=150;let sw=null;
+function closeSwipes(except){document.querySelectorAll('.swipe.open').forEach(w=>{if(w!==except){w.classList.remove('open');w.querySelector('.row').style.transform=''}})}
+$('#view').addEventListener('touchstart',e=>{
+  const row=e.target.closest('.swipe>.row');closeSwipes(row&&row.parentElement);if(!row)return;
+  sw={row,x:e.touches[0].clientX,y:e.touches[0].clientY,dx:0,base:row.parentElement.classList.contains('open')?-SWW:0,lock:null};
+},{passive:true});
+$('#view').addEventListener('touchmove',e=>{
+  if(!sw)return;const dx=e.touches[0].clientX-sw.x,dy=e.touches[0].clientY-sw.y;
+  if(sw.lock===null&&(Math.abs(dx)>8||Math.abs(dy)>8))sw.lock=Math.abs(dx)>Math.abs(dy)?'x':'y';
+  if(sw.lock!=='x')return;
+  e.preventDefault();sw.dx=dx;
+  sw.row.style.transition='none';sw.row.style.transform=`translateX(${Math.min(0,Math.max(-SWW-40,sw.base+dx))}px)`;
+},{passive:false});
+$('#view').addEventListener('touchend',()=>{
+  if(!sw)return;const{row,lock,base,dx}=sw;sw=null;if(lock!=='x')return;
+  const isOpen=base+dx<-SWW/2;row.style.transition='';row.style.transform=isOpen?`translateX(-${SWW}px)`:'';
+  row.parentElement.classList.toggle('open',isOpen);
+  if(isOpen&&!PREF.swiped){PREF.swiped=true;savePref();const h=document.querySelector('.sw-hint');h&&h.remove()}
+});
 /* tooltip */
 const tip=$('#tip');
 function showTip(el,x,y){const[a,b]=el.dataset.tip.split('|');tip.innerHTML='';const s=document.createElement('b');s.textContent=b;const l=document.createElement('span');l.textContent=a;tip.append(s,l);tip.style.display='block';const w=tip.offsetWidth;tip.style.left=Math.min(window.innerWidth-w-8,Math.max(8,x-w/2))+'px';tip.style.top=(y-tip.offsetHeight-12)+'px'}
