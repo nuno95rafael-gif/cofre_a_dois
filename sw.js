@@ -1,6 +1,6 @@
 /* Cofre a Dois — service worker: guarda os ficheiros da app para abrir sem internet.
    Os dados do cofre não passam por aqui (vão diretos ao Supabase); só ficheiros do próprio site. */
-const VERSION='cofre-v2';
+const VERSION='cofre-v3';
 const SHELL=['/','/index.html','/css/app.css','/js/app.js','/js/cloud.js','/js/config.js','/js/vendor/supabase-2.119.2.js',
   '/manifest.webmanifest','/icons/favicon-32.png','/icons/favicon-64.png','/icons/apple-touch-icon.png','/icons/icon-192.png','/icons/icon-512.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(VERSION).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});

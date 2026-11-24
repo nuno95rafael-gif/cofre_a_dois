@@ -749,7 +749,14 @@ function render(){
 function commit(msg){generate();genIncome();save();render();if(msg)toast(msg)}
 
 /* ---------- sheet (formulários) ---------- */
-function openSheet(html,mount){$('#sheet').innerHTML='<div class="grab"></div>'+html;$('#ov').classList.add('open');mount&&mount($('#sheet'));const f=$('#sheet').querySelector('input:not([type=radio]),select');f&&setTimeout(()=>f.focus({preventScroll:true}),50)}
+const TOUCH=matchMedia('(pointer: coarse)').matches;
+function openSheet(html,mount){
+  const sh=$('#sheet');sh.innerHTML='<div class="grab"></div>'+html;sh.scrollTop=0;$('#ov').classList.add('open');mount&&mount(sh);
+  // no telemóvel não pôr o cursor sozinho: no iPhone isso desloca o formulário sem abrir o teclado
+  if(!TOUCH){const f=sh.querySelector('input:not([type=radio]):not([type=checkbox]):not([type=file]),select');f&&setTimeout(()=>f.focus({preventScroll:true}),50)}
+}
+// quando o teclado abre, manter o campo tocado visível dentro do formulário
+$('#sheet').addEventListener('focusin',e=>{if(TOUCH&&e.target.matches('input,textarea,select'))setTimeout(()=>{try{e.target.scrollIntoView({block:'center',behavior:'smooth'})}catch(_){}},350)});
 const MQ=matchMedia('(min-width: 960px)');const wide=()=>MQ.matches;
 try{MQ.addEventListener('change',()=>render())}catch(e){}
 let sheetCancel=null;

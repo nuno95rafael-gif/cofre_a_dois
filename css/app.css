@@ -280,3 +280,13 @@ code{background:var(--surface2);padding:1px 5px;border-radius:5px}
 .net{font-size:12px;font-weight:600;padding:5px 9px;border-radius:999px;background:var(--warn-bg);color:var(--warn);white-space:nowrap;cursor:help}
 .brand{white-space:nowrap}
 @media (max-width:440px){.net .nt{display:none}.net{padding:5px 8px}}
+
+/* ---------- iPhone: margens seguras (relógio/notch, barra inferior) e altura real do ecrã ---------- */
+header.top{padding-top:calc(12px + env(safe-area-inset-top))}
+.gate{padding-top:env(safe-area-inset-top)}
+.overlay{padding-top:calc(env(safe-area-inset-top) + 10px)}
+/* dvh = altura visível de facto (sem a área tapada pelas barras do Safari) */
+.sheet{max-height:calc(100vh - 40px);max-height:calc(100dvh - env(safe-area-inset-top) - 10px);padding-bottom:calc(20px + env(safe-area-inset-bottom));overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.pv{padding-top:env(safe-area-inset-top)}
+#pvClose{top:calc(14px + env(safe-area-inset-top))}
+@media (min-width: 960px){.sheet{max-height:88vh;padding-bottom:22px}}
