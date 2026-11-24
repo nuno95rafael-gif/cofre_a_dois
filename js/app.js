@@ -826,10 +826,8 @@ function expenseForm(id,prefill){
       <div class="field"><label for="a">Valor (€)</label><input class="inp" id="a" name="amount" inputmode="decimal" placeholder="0,00" value="${x.amount===''?'':String(x.amount).replace('.',',')}"></div>
       <div class="field"><label for="c">Categoria</label><select class="inp" id="c" name="cat">${catOptions(x.cat)}</select></div>
     </div>
-    <div class="row2">
-      <div class="field"><label for="dt" id="dtLab">Data</label><input class="inp" type="date" id="dt" name="date" value="${x.date}"></div>
-      <div class="field" style="display:flex;align-items:flex-end"><label class="check" style="margin:0 0 12px"><input type="checkbox" name="unpaid" ${x.status!=='pago'?'checked':''}> ⏳ Ainda não está pago</label></div>
-    </div>
+    <div class="field"><label for="dt" id="dtLab">Data</label><input class="inp" type="date" id="dt" name="date" value="${x.date}">
+      <label class="check" style="margin:10px 0 0"><input type="checkbox" name="unpaid" ${x.status!=='pago'?'checked':''}> ⏳ Ainda não está pago</label></div>
     <input type="hidden" name="scope" value="${x.scope}">
     ${splitBlock(x)}
     <div class="field mt"><label for="nt">📝 Notas</label><textarea class="inp" id="nt" name="notes" rows="2" maxlength="500" placeholder="Ex.: pago com cartão de crédito; garantia até 2028">${esc(x.notes||'')}</textarea></div>
