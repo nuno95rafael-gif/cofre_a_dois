@@ -279,6 +279,7 @@
   }
   async function signOut(){
     try{if(S&&S.household)await persist()}catch(e){}
+    try{await disablePush()}catch(e){} // este dispositivo deixa de receber avisos desta conta
     if(channel){sb.removeChannel(channel);channel=null}
     clearCache(uidCur);uidCur=null;
     S=null;snap=new Map();
@@ -331,6 +332,46 @@
   // trabalho offline: o service worker guarda os ficheiros da app
   if('serviceWorker' in navigator&&location.protocol==='https:'){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(e=>console.warn('SW',e)))}
 
-  window.Cloud={sb,persistSoon,persist,refresh,afterSheetClosed,signOut,saveName,setAvatar};
+  /* ---------------- notificações (Web Push) ---------------- */
+  const PUSH_LABELS={partner:'Quando a outra pessoa regista uma despesa partilhada ou um acerto',due:'Contas a vencer nos próximos 3 dias ou em atraso (às 9h)',budget:'Orçamentos acima de 80% e de 100%'};
+  const pushOK=()=>'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window&&!!CFG.vapidPublic;
+  const isIOS=()=>/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const standalone=()=>navigator.standalone===true||matchMedia('(display-mode: standalone)').matches;
+  function b64u(s){const p='='.repeat((4-s.length%4)%4);const b=atob((s+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(b,c=>c.charCodeAt(0))}
+  async function currentSub(){if(!pushOK())return null;const reg=await navigator.serviceWorker.ready;return reg.pushManager.getSubscription()}
+  async function saveSub(sub,prefs){const j=sub.toJSON();const{error}=await sb.rpc('save_push_subscription',{p_endpoint:j.endpoint,p_p256dh:j.keys.p256dh,p_auth:j.keys.auth,p_prefs:prefs||null});if(error)throw error}
+  async function enablePush(){
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted')throw new Error('perm');
+    const reg=await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(CFG.vapidPublic)});
+    await saveSub(sub);
+  }
+  async function disablePush(){const sub=await currentSub();if(sub){await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}}
+  async function renderPush(){
+    const box=document.getElementById('pushBox');if(!box)return;
+    const put=h=>{const b=document.getElementById('pushBox');if(b)b.innerHTML=h;return b};
+    if(!pushOK()){
+      put(isIOS()&&!standalone()
+        ?'<p style="margin:0 0 6px"><b>No iPhone, primeiro instala a app.</b></p><p class="muted" style="margin:0;font-size:13.5px">As notificações só funcionam com a app no ecrã principal: no Safari, Partilhar → “Adicionar ao ecrã principal”. Depois abre a app pelo ícone e volta aqui.</p>'
+        :'<p class="muted" style="margin:0">Este browser não suporta notificações.</p>');return}
+    if(Notification.permission==='denied'){put('<p style="margin:0 0 6px"><b>As notificações estão bloqueadas.</b></p><p class="muted" style="margin:0;font-size:13.5px">Ativa-as nas definições do telemóvel (Definições → Notificações → Cofre a Dois) e volta aqui.</p>');return}
+    let sub=null,row=null;
+    try{sub=await currentSub();if(sub){const{data}=await sb.from('push_subscriptions').select('prefs').eq('endpoint',sub.endpoint).maybeSingle();row=data;if(!row&&Notification.permission==='granted'){await saveSub(sub);row={prefs:{partner:true,due:true,budget:true}}}}}catch(e){console.warn(e)}
+    if(!sub||!row){
+      const b=put('<p class="muted" style="margin:0 0 10px;font-size:13.5px">Recebe avisos neste dispositivo: despesas registadas pela outra pessoa, contas a vencer e orçamentos.</p><button class="btn primary" id="pushOn">🔔 Ativar notificações neste dispositivo</button>');
+      b.querySelector('#pushOn').onclick=async ev=>{ev.target.disabled=true;try{await enablePush();toast('Notificações ativadas 🔔');renderPush()}catch(e){console.error(e);toast(e.message==='perm'?'Não deste permissão para notificações':'Não foi possível ativar as notificações');ev.target.disabled=false}};
+      return}
+    const p=row.prefs||{};
+    const b=put(`<p style="margin:0 0 10px">✅ Ativas neste dispositivo. Avisar-me de:</p>
+      ${Object.entries(PUSH_LABELS).map(([k,l])=>`<label class="check"><input type="checkbox" data-pp="${k}" ${p[k]!==false?'checked':''}> ${l}</label>`).join('')}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn small" id="pushTest">Enviar notificação de teste</button><button class="btn small ghost" id="pushOff">Desativar neste dispositivo</button></div>`);
+    b.querySelectorAll('[data-pp]').forEach(cb=>cb.onchange=async()=>{p[cb.dataset.pp]=cb.checked;const{error}=await sb.from('push_subscriptions').update({prefs:p}).eq('endpoint',sub.endpoint);toast(error?'Não foi possível guardar':'Preferência guardada')});
+    b.querySelector('#pushTest').onclick=async ev=>{ev.target.disabled=true;try{const{data,error}=await sb.functions.invoke('notify',{body:{type:'test'}});if(error)throw error;toast(data&&data.sent?'Enviada! Deve aparecer dentro de segundos.':'Não foi possível entregar a este dispositivo')}catch(e){console.error(e);toast('Falhou o envio do teste')}ev.target.disabled=false};
+    b.querySelector('#pushOff').onclick=async()=>{try{await disablePush();toast('Notificações desativadas neste dispositivo')}catch(e){toast('Não foi possível desativar')}renderPush()};
+  }
+
+  window.Cloud={sb,persistSoon,persist,refresh,afterSheetClosed,signOut,saveName,setAvatar,renderPush};
   boot();
 })();

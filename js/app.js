@@ -356,6 +356,8 @@ function vDefinicoes(){
     <div style="display:flex;gap:10px;align-items:center"><b style="font-size:26px;letter-spacing:.12em">${esc(S.household.invite_code)}</b><button class="btn small ghost" id="copyCode">Copiar</button></div>
     <p class="muted" style="font-size:12.5px;margin:8px 0 0">A outra pessoa abre a app, cria conta e escolhe “Entrar com código”.</p>`}
   </div>
+  <h3 class="sec">🔔 Notificações</h3>
+  <div class="card" id="pushBox"><p class="muted" style="margin:0">A verificar…</p></div>
   <h3 class="sec">Categorias</h3>
   <div class="list" id="cats">${S.categories.map(c=>`<div class="catrow"><input class="inp emo" data-ci="${c.id}" value="${esc(c.icon)}" aria-label="Ícone"><input class="inp" data-cn="${c.id}" value="${esc(c.name)}" aria-label="Nome">${c.id==='outros'?'<span style="width:34px"></span>':`<button class="btn small danger" data-cd="${c.id}" aria-label="Apagar">✕</button>`}</div>`).join('')}
     <div class="catrow"><input class="inp emo" id="newIcon" value="🏷️" aria-label="Ícone"><input class="inp" id="newCat" placeholder="Nova categoria" aria-label="Nova categoria"><button class="btn small primary" id="addCat">+</button></div>
@@ -742,6 +744,7 @@ function render(){
   $('#space [data-sp=pessoal]').textContent=`🔒 Pessoal · ${nm(S.viewer)}`;
   $('#fab').setAttribute('aria-label',r==='fixos'?'Adicionar gasto fixo':r==='ganhos'?'Adicionar ganho':'Adicionar despesa');
   $('#fabL').textContent=r==='fixos'?'Novo gasto fixo':r==='ganhos'?'Novo ganho':'Nova despesa';
+  if(r==='definicoes'&&window.Cloud)Cloud.renderPush();
 }
 function commit(msg){generate();genIncome();save();render();if(msg)toast(msg)}
 

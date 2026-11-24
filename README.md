@@ -42,3 +42,14 @@ Qualquer servidor estático serve, por exemplo:
 ```sh
 python3 -m http.server 8080
 ```
+
+## Notificações (Web Push)
+
+- A app pede autorização em *Definições → Notificações* e guarda a subscrição do dispositivo
+  (`push_subscriptions`, via `save_push_subscription`). No iPhone só funciona com a app
+  instalada no ecrã principal (iOS 16.4+).
+- A Edge Function `supabase/functions/notify` envia os avisos:
+  - imediatos, por um gatilho em `records` (despesa partilhada ou acerto criado pela outra pessoa);
+  - diários às 09:00 UTC, pelo `pg_cron` (contas a vencer em 3 dias / em atraso, orçamentos ≥ 80% e ≥ 100%).
+- Segredos no **Supabase Vault** (`vapid_public`, `vapid_private`, `notify_secret`) — nunca no repositório.
+  A chave pública VAPID está também em `js/config.js` (é pública por natureza).
